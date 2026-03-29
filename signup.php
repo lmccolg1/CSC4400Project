@@ -22,6 +22,10 @@ if (isset($_POST['register'])) {
     $dislikes = trim($_POST['dislikes'] ?? '');
     $isprivate = isset($_POST['isprivate']) ? 1 : 0;
 
+    // New: admin checkbox
+    $isAdmin = isset($_POST['is_admin']) ? 1 : 0;
+    $utype = $isAdmin ? 'admin' : 'user';
+
     // Validation
     if (
         empty($username) ||
@@ -38,74 +42,91 @@ if (isset($_POST['register'])) {
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match.";
     } else {
-        // Check if username already exists
-        $checkUser = $conn->prepare("SELECT account_id FROM account WHERE username = ?");
-        $checkUser->bind_param("s", $username);
-        $checkUser->execute();
-        $checkUser->store_result();
+        // Extra admin-only password rule
+        if ($isAdmin) {
+            preg_match_all('/[^a-zA-Z]/', $password, $matches);
+            $nonLetterCount = count($matches[0]);
 
-        if ($checkUser->num_rows > 0) {
-            $error = "Username already taken.";
-        } else {
-            // Check if screenname already exists
-            $checkScreen = $conn->prepare("SELECT profile_id FROM profile WHERE screenname = ?");
-            $checkScreen->bind_param("s", $screenname);
-            $checkScreen->execute();
-            $checkScreen->store_result();
-
-            if ($checkScreen->num_rows > 0) {
-                $error = "Screenname already taken.";
-            } else {
-                $conn->begin_transaction();
-
-                try {
-                    // Insert account
-                    $stmtAccount = $conn->prepare("
-                        INSERT INTO account (username, password, utype, isbot)
-                        VALUES (?, ?, 'user', 0)
-                    ");
-                    $stmtAccount->bind_param("ss", $username, $password);
-
-                    if (!$stmtAccount->execute()) {
-                        throw new Exception("Failed to create account.");
-                    }
-
-                    $account_id = $conn->insert_id;
-                    $stmtAccount->close();
-
-                    // Insert profile
-                    $stmtProfile = $conn->prepare("
-                        INSERT INTO profile (acc_id, screenname, summary, likes, dislikes, isprivate)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ");
-                    $stmtProfile->bind_param(
-                        "issssi",
-                        $account_id,
-                        $screenname,
-                        $summary,
-                        $likes,
-                        $dislikes,
-                        $isprivate
-                    );
-
-                    if (!$stmtProfile->execute()) {
-                        throw new Exception("Failed to create profile.");
-                    }
-
-                    $stmtProfile->close();
-
-                    $conn->commit();
-                    $success = "Registration successful. You can now log in.";
-                } catch (Exception $e) {
-                    $conn->rollback();
-                    $error = $e->getMessage();
-                }
+            if ($nonLetterCount < 2) {
+                $error = "Admin password must include at least 2 non-letter characters.";
             }
-
-            $checkScreen->close();
         }
 
-        $checkUser->close();
+        if (empty($error)) {
+            // Check if username already exists
+            $checkUser = $conn->prepare("SELECT account_id FROM account WHERE username = ?");
+            $checkUser->bind_param("s", $username);
+            $checkUser->execute();
+            $checkUser->store_result();
+
+            if ($checkUser->num_rows > 0) {
+                $error = "Username already taken.";
+            } else {
+                // Check if screenname already exists
+                $checkScreen = $conn->prepare("SELECT profile_id FROM profile WHERE screenname = ?");
+                $checkScreen->bind_param("s", $screenname);
+                $checkScreen->execute();
+                $checkScreen->store_result();
+
+                if ($checkScreen->num_rows > 0) {
+                    $error = "Screenname already taken.";
+                } else {
+                    $conn->begin_transaction();
+
+                    try {
+                        // Insert account
+                        $stmtAccount = $conn->prepare("
+                            INSERT INTO account (username, password, utype, isbot)
+                            VALUES (?, ?, ?, 0)
+                        ");
+                        $stmtAccount->bind_param("sss", $username, $password, $utype);
+
+                        if (!$stmtAccount->execute()) {
+                            throw new Exception("Failed to create account.");
+                        }
+
+                        $account_id = $conn->insert_id;
+                        $stmtAccount->close();
+
+                        // Insert profile
+                        $stmtProfile = $conn->prepare("
+                            INSERT INTO profile (acc_id, screenname, summary, likes, dislikes, isprivate)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmtProfile->bind_param(
+                            "issssi",
+                            $account_id,
+                            $screenname,
+                            $summary,
+                            $likes,
+                            $dislikes,
+                            $isprivate
+                        );
+
+                        if (!$stmtProfile->execute()) {
+                            throw new Exception("Failed to create profile.");
+                        }
+
+                        $stmtProfile->close();
+
+                        $conn->commit();
+
+                        if ($isAdmin) {
+                            $success = "Admin registration successful. You can now log in.";
+                        } else {
+                            $success = "Registration successful. You can now log in.";
+                        }
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        $error = $e->getMessage();
+                    }
+                }
+
+                $checkScreen->close();
+            }
+
+            $checkUser->close();
+        }
     }
 }
 ?>
@@ -183,6 +204,12 @@ if (isset($_POST['register'])) {
             margin-top: 10px;
             margin-bottom: 20px;
         }
+
+        .helper-text {
+            color: #666;
+            font-size: 0.95em;
+            margin-top: 6px;
+        }
     </style>
 </head>
 <body>
@@ -199,6 +226,9 @@ if (isset($_POST['register'])) {
         <div class="w3-margin-bottom">
             <label><b>Password</b></label>
             <input class="w3-input" type="password" name="password" minlength="8" required>
+            <p class="helper-text">
+                Password must be at least 8 characters. Admin passwords must also include at least 2 non-letter characters.
+            </p>
         </div>
 
         <div class="w3-margin-bottom">
@@ -230,6 +260,13 @@ if (isset($_POST['register'])) {
             <label>
                 <input type="checkbox" name="isprivate" value="1">
                 Make profile private
+            </label>
+        </div>
+
+        <div class="checkbox-row">
+            <label>
+                <input type="checkbox" name="is_admin" value="1">
+                Register as admin
             </label>
         </div>
 
