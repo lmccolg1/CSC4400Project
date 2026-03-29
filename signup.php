@@ -170,7 +170,19 @@ if (isset($_POST['register'])) {
             border-radius: 8px;
             padding: 12px;
         }
-
+		
+		.brand {
+			position: fixed;
+			top: 20px;
+			left: 50px;
+			color: white;
+			font-size: 3em;
+			font-weight: bold;
+			letter-spacing: 1px;
+			z-index: 1000;
+			text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
+		}
+		
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -213,7 +225,7 @@ if (isset($_POST['register'])) {
     </style>
 </head>
 <body>
-
+<div class="brand">Parasocial</div>
 <div class="card">
     <h2 class="title">Create Account</h2>
 

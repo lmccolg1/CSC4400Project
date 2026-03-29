@@ -139,6 +139,18 @@ if (isset($_POST['login'])) {
             outline: none;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
+		
+		.brand {
+			position: fixed;
+			top: 20px;
+			left: 50px;
+			color: white;
+			font-size: 3em;
+			font-weight: bold;
+			letter-spacing: 1px;
+			z-index: 1000;
+			text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
+		}
 
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -206,6 +218,7 @@ if (isset($_POST['login'])) {
     </style>
 </head>
 <body>
+	<div class="brand">Parasocial</div>
     <div class="hero-section">
         <div class="hero-pattern"></div>
         <div class="hero-content">
