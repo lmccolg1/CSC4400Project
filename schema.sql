@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 29, 2026 at 07:54 PM
+-- Generation Time: Mar 30, 2026 at 03:48 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -43,7 +43,7 @@ CREATE TABLE `account` (
 
 INSERT INTO `account` (`account_id`, `username`, `password`, `utype`, `isbot`, `created_at`, `standing`) VALUES
 (1, 'flynn_mctaggart', 'ripntear', 'user', 0, '2026-03-17 14:11:50', NULL),
-(2, 'spartan117', 'pillarofautism', 'user', 0, '2026-03-29 13:07:00', NULL),
+(2, 'spartan117', 'pillarofautumn', 'user', 0, '2026-03-29 13:07:00', NULL),
 (3, 'GOD', 'ashbagoba12', 'admin', 0, '2026-03-29 13:39:03', NULL);
 
 -- --------------------------------------------------------
