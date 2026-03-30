@@ -1,3 +1,3 @@
 <?php
-echo "Henlo Worlnd";
+echo "Hello There welcome to the dashboard";
 ?>
