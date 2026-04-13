@@ -36,6 +36,10 @@ if (isset($_POST['login'])) {
             WHERE username = ?
         ");
 
+        if (!$stmt) {
+            die("Prepare failed: " . $conn->error);
+        }
+
         $stmt->bind_param("s", $username);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -43,16 +47,22 @@ if (isset($_POST['login'])) {
         if ($result->num_rows === 1) {
             $row = $result->fetch_assoc();
 
-            // Plain-text comparison for now because schema sample stores plain text
-            if ($password === $row['password']) {
+            // Use password_verify because signup now stores hashed passwords
+            if (password_verify($password, $row['password'])) {
                 $_SESSION['account_id'] = $row['account_id'];
                 $_SESSION['username'] = $row['username'];
                 $_SESSION['utype'] = $row['utype'];
                 $_SESSION['isbot'] = $row['isbot'];
                 $_SESSION['logged_in'] = true;
 
-                header('Location: dashboard.php');
-                exit();
+                // Redirect by role
+                if ($row['utype'] === 'admin') {
+                    header('Location: admin_dashboard.php');
+                    exit();
+                } else {
+                    header('Location: dashboard.php');
+                    exit();
+                }
             } else {
                 $error = "Invalid username or password.";
             }
@@ -63,6 +73,8 @@ if (isset($_POST['login'])) {
         $stmt->close();
     }
 }
+
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -139,18 +151,18 @@ if (isset($_POST['login'])) {
             outline: none;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-		
-		.brand {
-			position: fixed;
-			top: 20px;
-			left: 50px;
-			color: white;
-			font-size: 3em;
-			font-weight: bold;
-			letter-spacing: 1px;
-			z-index: 1000;
-			text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
-		}
+
+        .brand {
+            position: fixed;
+            top: 20px;
+            left: 50px;
+            color: white;
+            font-size: 3em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            z-index: 1000;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
+        }
 
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -218,7 +230,7 @@ if (isset($_POST['login'])) {
     </style>
 </head>
 <body>
-	<div class="brand">Parasocial</div>
+    <div class="brand">Parasocial</div>
     <div class="hero-section">
         <div class="hero-pattern"></div>
         <div class="hero-content">
