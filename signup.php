@@ -16,6 +16,9 @@ if (isset($_POST['register'])) {
     $password = trim($_POST['password'] ?? '');
     $confirm = trim($_POST['confirm_password'] ?? '');
 
+    $security_question = trim($_POST['security_question'] ?? '');
+    $security_answer   = strtolower(trim($_POST['security_answer'] ?? ''));
+
     $screenname = trim($_POST['screenname'] ?? '');
     $summary = trim($_POST['summary'] ?? '');
     $likes = trim($_POST['likes'] ?? '');
@@ -34,7 +37,9 @@ if (isset($_POST['register'])) {
         empty($screenname) ||
         empty($summary) ||
         empty($likes) ||
-        empty($dislikes)
+        empty($dislikes) ||
+        empty($security_question) ||
+        empty($security_answer)
     ) {
         $error = "All fields except privacy setting are required.";
     } elseif (strlen($password) < 8) {
@@ -47,9 +52,7 @@ if (isset($_POST['register'])) {
             preg_match_all('/[^a-zA-Z]/', $password, $matches);
             $nonLetterCount = count($matches[0]);
 
-            if ($nonLetterCount < 2) {
-                $error = "Admin password must include at least 2 non-letter characters.";
-            }
+            
         }
 
         if (empty($error)) {
@@ -76,10 +79,10 @@ if (isset($_POST['register'])) {
                     try {
                         // Insert account
                         $stmtAccount = $conn->prepare("
-                            INSERT INTO account (username, password, utype, isbot)
-                            VALUES (?, ?, ?, 0)
+                            INSERT INTO account (username, password, utype, isbot, security_question, security_answer)
+                            VALUES (?, ?, ?, 0, ?, ?)
                         ");
-                        $stmtAccount->bind_param("sss", $username, $password, $utype);
+                        $stmtAccount->bind_param("sssss", $username, $password, $utype, $security_question, $security_answer);
 
                         if (!$stmtAccount->execute()) {
                             throw new Exception("Failed to create account.");
@@ -111,11 +114,7 @@ if (isset($_POST['register'])) {
 
                         $conn->commit();
 
-                        if ($isAdmin) {
-                            $success = "Admin registration successful. You can now log in.";
-                        } else {
-                            $success = "Registration successful. You can now log in.";
-                        }
+                        
                     } catch (Exception $e) {
                         $conn->rollback();
                         $error = $e->getMessage();
@@ -273,6 +272,25 @@ if (isset($_POST['register'])) {
                 <input type="checkbox" name="isprivate" value="1">
                 Make profile private
             </label>
+        </div>
+
+        <div class="w3-margin-bottom">
+            <label><b>Security Question</b></label>
+            <select class="w3-input" name="security_question" required style="border:2px solid #e0e0e0; border-radius:8px; padding:12px;">
+                <option value="">-- Select a security question --</option>
+                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                <option value="What city were you born in?">What city were you born in?</option>
+                <option value="What was the name of your elementary school?">What was the name of your elementary school?</option>
+                <option value="What is the name of your childhood best friend?">What is the name of your childhood best friend?</option>
+                <option value="What was the make of your first car?">What was the make of your first car?</option>
+            </select>
+        </div>
+
+        <div class="w3-margin-bottom">
+            <label><b>Security Answer</b></label>
+            <input class="w3-input" type="text" name="security_answer" placeholder="Your answer (case-insensitive)" required>
+            <p class="helper-text">This will be used to verify your identity if you forget your password.</p>
         </div>
 
         <div class="checkbox-row">

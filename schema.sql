@@ -34,7 +34,9 @@ CREATE TABLE `account` (
   `utype` varchar(20) DEFAULT NULL,
   `isbot` tinyint(1) DEFAULT 0,
   `created_at` datetime DEFAULT current_timestamp(),
-  `standing` varchar(20) DEFAULT NULL
+  `standing` varchar(20) DEFAULT NULL,
+  `security_question` varchar(255) DEFAULT NULL,
+  `security_answer` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -181,6 +183,11 @@ ALTER TABLE `message`
 ALTER TABLE `profile`
   ADD CONSTRAINT `profile_ibfk_1` FOREIGN KEY (`acc_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE;
 COMMIT;
+
+-- Run this if upgrading an existing database (columns may already exist if using fresh schema above):
+-- ALTER TABLE `account`
+--   ADD COLUMN IF NOT EXISTS `security_question` varchar(255) DEFAULT NULL,
+--   ADD COLUMN IF NOT EXISTS `security_answer` varchar(255) DEFAULT NULL;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
