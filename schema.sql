@@ -192,3 +192,19 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+-- --------------------------------------------------------
+-- Table structure for table `matches`
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `matches` (
+  `match_id` int(11) NOT NULL AUTO_INCREMENT,
+  `user1_id` int(11) NOT NULL,
+  `user2_id` int(11) NOT NULL,
+  `status` enum('liked','passed','matched') NOT NULL DEFAULT 'liked',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`match_id`),
+  UNIQUE KEY `unique_pair` (`user1_id`,`user2_id`),
+  KEY `user2_id` (`user2_id`),
+  CONSTRAINT `matches_ibfk_1` FOREIGN KEY (`user1_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE,
+  CONSTRAINT `matches_ibfk_2` FOREIGN KEY (`user2_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
