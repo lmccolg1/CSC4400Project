@@ -1,265 +1,545 @@
 <?php
 session_start();
+require_once __DIR__ . '/DBConnect.php';
 
-// Make sure user is logged in and is an admin
-if (!isset($_SESSION['account_id']) || !isset($_SESSION['utype']) || $_SESSION['utype'] !== 'admin') {
-    header("Location: index.php");
+if (!isset($conn) || $conn->connect_error) {
+    die('Database connection failed.');
+}
+
+
+// Check if user is logged in and is admin
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+    header('Location: index.php');
     exit();
 }
 
-$message = "";
+$username = $_SESSION['username'] ?? 'Admin';
+$user_type = $_SESSION['user_type'] ?? 'user';
 
-// Connect to database
-$conn = new mysqli("localhost", "root", "", "dating_app");
-
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
+// Redirect to user dashboard if not admin
+if ($user_type !== 'admin') {
+    header('Location: dashboard.php');
+    exit();
 }
 
-// Handle approve / deny actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['request_id'], $_POST['account_id'])) {
-    $request_id = (int) $_POST['request_id'];
-    $account_id = (int) $_POST['account_id'];
-    $action = $_POST['action'];
+$account_id = (int)($_SESSION['account_id'] ?? 0);
+$notice = '';
+$error = '';
 
-    $conn->begin_transaction();
-
-    try {
-        if ($action === 'approve') {
-            // Promote account to admin
-            $stmt1 = $conn->prepare("
-                UPDATE account
-                SET utype = 'admin'
-                WHERE account_id = ?
-            ");
-            $stmt1->bind_param("i", $account_id);
-
-            if (!$stmt1->execute()) {
-                throw new Exception("Failed to approve admin request.");
-            }
-            $stmt1->close();
-
-            // Mark request approved
-            $stmt2 = $conn->prepare("
-                UPDATE admin_requests
-                SET status = 'approved'
-                WHERE request_id = ?
-            ");
-            $stmt2->bind_param("i", $request_id);
-
-            if (!$stmt2->execute()) {
-                throw new Exception("Failed to update request status.");
-            }
-            $stmt2->close();
-
-            $message = "Admin request approved.";
-        } elseif ($action === 'deny') {
-            // Mark request denied
-            $stmt = $conn->prepare("
-                UPDATE admin_requests
-                SET status = 'denied'
-                WHERE request_id = ?
-            ");
-            $stmt->bind_param("i", $request_id);
-
-            if (!$stmt->execute()) {
-                throw new Exception("Failed to deny admin request.");
-            }
-            $stmt->close();
-
-            $message = "Admin request denied.";
+if ($account_id <= 0 && !empty($username)) {
+    $idStmt = $conn->prepare("SELECT account_id FROM account WHERE username = ? LIMIT 1");
+    if ($idStmt) {
+        $idStmt->bind_param("s", $username);
+        $idStmt->execute();
+        $idResult = $idStmt->get_result();
+        if ($idRow = $idResult->fetch_assoc()) {
+            $account_id = (int)$idRow['account_id'];
+            $_SESSION['account_id'] = $account_id;
         }
-
-        $conn->commit();
-    } catch (Exception $e) {
-        $conn->rollback();
-        $message = $e->getMessage();
+        $idStmt->close();
     }
 }
 
-// Pull all pending admin requests
-$stmt = $conn->prepare("
-    SELECT 
-        ar.request_id,
-        ar.account_id,
-        ar.created_at,
-        a.username,
-        p.screenname,
-        p.summary
-    FROM admin_requests ar
-    INNER JOIN account a ON ar.account_id = a.account_id
-    INNER JOIN profile p ON a.account_id = p.acc_id
-    WHERE ar.status = 'pending'
-    ORDER BY ar.created_at DESC
-");
-$stmt->execute();
-$result = $stmt->get_result();
-
-$requests = [];
-while ($row = $result->fetch_assoc()) {
-    $requests[] = $row;
+if ($account_id <= 0) {
+    session_destroy();
+    header('Location: index.php');
+    exit();
 }
 
-$stmt->close();
-$conn->close();
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'])) {
+    $receiver_id = (int)($_POST['receiver_id'] ?? 0);
+    $message_text = trim($_POST['message_text'] ?? '');
+
+    if ($receiver_id <= 0) {
+        $error = 'Please select a valid recipient.';
+    } elseif ($receiver_id === $account_id) {
+        $error = 'You cannot send a message to yourself.';
+    } elseif ($message_text === '') {
+        $error = 'Message text cannot be empty.';
+    } else {
+        $receiverCheck = $conn->prepare("SELECT account_id FROM account WHERE account_id = ? LIMIT 1");
+        if ($receiverCheck) {
+            $receiverCheck->bind_param("i", $receiver_id);
+            $receiverCheck->execute();
+            $receiverResult = $receiverCheck->get_result();
+
+            if ($receiverResult->num_rows === 0) {
+                $error = 'Recipient account does not exist.';
+            } else {
+                $sendStmt = $conn->prepare("
+                    INSERT INTO message (sender_id, receiver_id, text)
+                    VALUES (?, ?, ?)
+                ");
+
+                if ($sendStmt) {
+                    $sendStmt->bind_param("iis", $account_id, $receiver_id, $message_text);
+                    if ($sendStmt->execute()) {
+                        $notice = 'Message sent successfully.';
+                        $_POST['message_text'] = '';
+                        $_POST['receiver_id'] = '';
+                    } else {
+                        $error = 'Message could not be sent: ' . $sendStmt->error;
+                    }
+                    $sendStmt->close();
+                } else {
+                    $error = 'Message query could not be prepared: ' . $conn->error;
+                }
+            }
+            $receiverCheck->close();
+        } else {
+            $error = 'Recipient check could not be prepared: ' . $conn->error;
+        }
+    }
+}
+
+$accounts = [];
+$accountsStmt = $conn->prepare("
+    SELECT
+        a.account_id,
+        a.username,
+        a.utype,
+        COALESCE(p.screenname, a.username) AS display_name
+    FROM account a
+    LEFT JOIN profile p ON p.acc_id = a.account_id
+    WHERE a.account_id <> ?
+    ORDER BY display_name ASC
+");
+
+if ($accountsStmt) {
+    $accountsStmt->bind_param("i", $account_id);
+    $accountsStmt->execute();
+    $accountsResult = $accountsStmt->get_result();
+    if ($accountsResult) {
+        $accounts = $accountsResult->fetch_all(MYSQLI_ASSOC);
+    }
+    $accountsStmt->close();
+}
+
+$messages = [];
+$messageStmt = $conn->prepare("
+    SELECT
+        m.message_id,
+        m.text,
+        m.sent_at,
+        m.read_at,
+        sender.account_id AS sender_id,
+        receiver.account_id AS receiver_id,
+        COALESCE(sender_profile.screenname, sender.username) AS sender_name,
+        COALESCE(receiver_profile.screenname, receiver.username) AS receiver_name
+    FROM message m
+    INNER JOIN account sender ON sender.account_id = m.sender_id
+    INNER JOIN account receiver ON receiver.account_id = m.receiver_id
+    LEFT JOIN profile sender_profile ON sender_profile.acc_id = sender.account_id
+    LEFT JOIN profile receiver_profile ON receiver_profile.acc_id = receiver.account_id
+    ORDER BY m.sent_at DESC
+    LIMIT 10
+");
+
+if ($messageStmt) {
+    $messageStmt->execute();
+    $messageResult = $messageStmt->get_result();
+    if ($messageResult) {
+        $messages = $messageResult->fetch_all(MYSQLI_ASSOC);
+    }
+    $messageStmt->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
-
+    <title>Admin Dashboard | Parasocial</title>
     <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: #f5f5f5;
             margin: 0;
         }
-
-        .brand {
-            position: fixed;
-            top: 20px;
-            left: 50px;
+        
+        .navbar {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white;
-            font-size: 3em;
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5em;
             font-weight: bold;
-            letter-spacing: 1px;
-            z-index: 1000;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
         }
-
-        .card {
-            background: white;
+        
+        .admin-badge {
+            background: rgba(255,255,255,0.3);
+            padding: 5px 15px;
             border-radius: 20px;
-            padding: 35px;
-            max-width: 900px;
-            margin: 80px auto;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            font-size: 0.9em;
+            margin-left: 10px;
         }
-
-        .title {
-            color: #667eea;
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            text-decoration: none;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        
+        .logout-btn:hover {
+            background: white;
+            color: #e74c3c;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        
+        .welcome-card {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .welcome-title {
             font-size: 2em;
-            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .welcome-subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-left: 5px solid #e74c3c;
+        }
+        
+        .stat-icon {
+            font-size: 2em;
+            color: #e74c3c;
+            margin-bottom: 10px;
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 1em;
+            color: #666;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .admin-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s;
+        }
+        
+        .admin-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(231, 76, 60, 0.2);
+        }
+        
+        .card-icon {
+            font-size: 2.5em;
+            color: #e74c3c;
+            margin-bottom: 15px;
+        }
+        
+        .card-title {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .card-text {
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+        
+        .action-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            width: 100%;
+        }
+        
+        .action-btn:hover {
+            background: #c0392b;
+        }
+        
+        .table-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        
+        .table-title {
+            font-size: 1.5em;
+            color: #333;
             margin-bottom: 20px;
             font-weight: bold;
         }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        thead {
+            background: #f8f9fa;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            color: #333;
+            font-weight: bold;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            color: #666;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-banned {
+            background: #f8d7da;
+            color: #721c24;
+        }
 
-        .subtitle {
-            text-align: center;
-            color: #555;
+        .form-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             margin-bottom: 30px;
         }
 
-        .message {
-            text-align: center;
-            color: green;
-            font-weight: bold;
-            margin-bottom: 20px;
+        .form-group {
+            margin-bottom: 15px;
         }
 
-        .notification {
-            border: 2px solid #e5e5e5;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            background: #fafafa;
-        }
-
-        .notification h3 {
-            margin-top: 0;
+        label {
+            display: block;
             color: #333;
+            font-weight: bold;
+            margin-bottom: 6px;
         }
 
-        .notification p {
-            margin: 8px 0;
-            color: #444;
-        }
-
-        .actions {
-            margin-top: 15px;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            border: none;
-            padding: 10px 18px;
+        select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
             border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1em;
         }
 
-        .approve-btn {
-            background: #2e7d32;
-            color: white;
+        textarea {
+            min-height: 110px;
+            resize: vertical;
         }
 
-        .deny-btn {
-            background: #c62828;
-            color: white;
+        .notice {
+            background: #d4edda;
+            color: #155724;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
         }
 
-        .logout-link {
-            display: inline-block;
-            margin-top: 20px;
-            color: #667eea;
-            text-decoration: none;
-            font-weight: bold;
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
         }
 
-        .empty {
-            text-align: center;
-            color: #666;
-            padding: 25px 0;
+        .badge {
+            color: #999;
+            font-size: 0.85em;
+            margin-left: 4px;
         }
     </style>
 </head>
 <body>
-    <div class="brand">Parasocial</div>
+    <!-- Navigation Bar -->
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="logo">
+                <i class="fas fa-heart"></i> Parasocial
+                <span class="admin-badge">ADMIN</span>
+            </div>
+            <div class="user-info">
+                <span><i class="fas fa-user-shield"></i> <?php echo htmlspecialchars($username); ?></span>
+                <a href="logout.php" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Welcome Section -->
+        <div class="welcome-card">
+            <h1 class="welcome-title">Admin Control Panel</h1>
+        </div>
 
-    <div class="card">
-        <h1 class="title">Admin Dashboard</h1>
-        <p class="subtitle">Pending administrator requests</p>
+        <div class="form-card">
+            <h2 class="table-title"><i class="fas fa-paper-plane"></i> Send Message</h2>
 
-        <?php if (!empty($message)): ?>
-            <div class="message"><?php echo htmlspecialchars($message); ?></div>
-        <?php endif; ?>
+            <?php if ($notice !== ''): ?>
+                <div class="notice"><?php echo htmlspecialchars($notice); ?></div>
+            <?php endif; ?>
 
-        <?php if (count($requests) === 0): ?>
-            <div class="empty">There are no pending admin requests.</div>
-        <?php else: ?>
-            <?php foreach ($requests as $request): ?>
-                <div class="notification">
-                    <h3><?php echo htmlspecialchars($request['screenname']); ?></h3>
-                    <p><strong>Username:</strong> <?php echo htmlspecialchars($request['username']); ?></p>
-                    <p><strong>Summary:</strong> <?php echo htmlspecialchars($request['summary']); ?></p>
-                    <p><strong>Requested:</strong> <?php echo htmlspecialchars($request['created_at']); ?></p>
+            <?php if ($error !== ''): ?>
+                <div class="error"><?php echo htmlspecialchars($error); ?></div>
+            <?php endif; ?>
 
-                    <div class="actions">
-                        <form method="POST" style="display:inline;">
-                            <input type="hidden" name="request_id" value="<?php echo (int)$request['request_id']; ?>">
-                            <input type="hidden" name="account_id" value="<?php echo (int)$request['account_id']; ?>">
-                            <input type="hidden" name="action" value="approve">
-                            <button type="submit" class="btn approve-btn">Approve</button>
-                        </form>
-
-                        <form method="POST" style="display:inline;">
-                            <input type="hidden" name="request_id" value="<?php echo (int)$request['request_id']; ?>">
-                            <input type="hidden" name="account_id" value="<?php echo (int)$request['account_id']; ?>">
-                            <input type="hidden" name="action" value="deny">
-                            <button type="submit" class="btn deny-btn">Deny</button>
-                        </form>
-                    </div>
+            <form method="POST" action="admin_dashboard.php">
+                <div class="form-group">
+                    <label for="receiver_id">Recipient</label>
+                    <select id="receiver_id" name="receiver_id" required>
+                        <option value="">Select an account</option>
+                        <?php foreach ($accounts as $account): ?>
+                            <option value="<?php echo (int)$account['account_id']; ?>"
+                                <?php echo ((int)($_POST['receiver_id'] ?? 0) === (int)$account['account_id']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($account['display_name']); ?>
+                                (<?php echo htmlspecialchars($account['username']); ?>, <?php echo htmlspecialchars($account['utype'] ?? 'user'); ?>, #<?php echo (int)$account['account_id']; ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
 
-        <a class="logout-link" href="logout.php">Log out</a>
+                <div class="form-group">
+                    <label for="message_text">Message</label>
+                    <textarea id="message_text" name="message_text" required><?php echo htmlspecialchars($_POST['message_text'] ?? ''); ?></textarea>
+                </div>
+
+                <button type="submit" name="send_message" class="action-btn">Send Message</button>
+            </form>
+        </div>
+        
+        <div class="table-card">
+            <h2 class="table-title"><i class="fas fa-envelope"></i> Recent Messages</h2>
+            <?php if (empty($messages)): ?>
+                <p>No messages found.</p>
+            <?php else: ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Message</th>
+                            <th>Sent</th>
+                            <th>Read?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($messages as $message): ?>
+                            <tr>
+                                <td><?php echo (int)$message['message_id']; ?></td>
+                                <td>
+                                    <?php echo htmlspecialchars($message['sender_name'] ?? ''); ?>
+                                    <span class="badge">#<?php echo (int)$message['sender_id']; ?></span>
+                                </td>
+                                <td>
+                                    <?php echo htmlspecialchars($message['receiver_name'] ?? ''); ?>
+                                    <span class="badge">#<?php echo (int)$message['receiver_id']; ?></span>
+                                </td>
+                                <td><?php echo htmlspecialchars($message['text'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($message['sent_at'] ?? ''); ?></td>
+                                <td><?php echo empty($message['read_at']) ? 'No' : 'Yes'; ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
+
     </div>
 </body>
 </html>
