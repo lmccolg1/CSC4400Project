@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 26, 2026 at 06:07 PM
+-- Generation Time: Apr 26, 2026 at 10:51 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -39,16 +39,16 @@ CREATE TABLE IF NOT EXISTS `account` (
   `security_answer` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`account_id`),
   UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `account`
 --
 
 INSERT INTO `account` (`account_id`, `username`, `password`, `utype`, `isbot`, `created_at`, `standing`, `security_question`, `security_answer`) VALUES
-(1, 'flynn_mctaggart', '$2y$10$JotPLyuir4knYjJ4b3APHOj9/mhZyMdDTB.tZ.cwSdj2ZNP85wSh2', 'user', 0, '2026-03-17 14:11:50', NULL, 'What was the name of your first pet?', 'Daisy'),
-(2, 'spartan117', '$2y$10$iLi/dvMQbGq4Zg7uHfZH0.fa/knhjuHmErNPy5ZZ8EX8J4ziKGlRi', 'user', 0, '2026-03-29 13:07:00', NULL, 'What was the name of your first pet?', 'Cortana'),
-(3, 'GOD', '$2y$10$7XYm5THrwhs9NVDcAZCcYObEox4sQYyxQrbugYnC7ivV1yIvOC.EO', 'admin', 0, '2026-03-29 13:39:03', NULL, 'What was the make of your first car?', 'Toyota'),
+(1, 'flynn_mctaggart', 'ripntear', 'user', 0, '2026-03-17 14:11:50', NULL, 'What was the name of your first pet?', 'Daisy'),
+(2, 'spartan117', 'pillarofautism', 'user', 0, '2026-03-29 13:07:00', NULL, 'What was the name of your first pet?', 'Cortana'),
+(3, 'GOD', 'ashbogoba12', 'admin', 0, '2026-03-29 13:39:03', NULL, 'What was the make of your first car?', 'Toyota'),
 (4, 'Jehova', '$2y$10$QTWu4yjb7608nT58WGgu3.lguyI/wvdQxKrFgf9vKvYKMQH/DELKG', 'admin', 0, '2026-04-12 23:09:56', NULL, 'What city were you born in?', 'Jerusalem'),
 (5, 'Yahweh', '$2y$10$AePrS/CBSepu9PfPRNozCeR2.NU/tlPX8otUwR3pEs7LcpLWCiNU.', 'user', 0, '2026-04-12 23:10:59', NULL, 'What city were you born in?', 'Edom');
 
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS `admin_requests` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`request_id`),
   KEY `account_id` (`account_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `admin_requests`
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS `message` (
   PRIMARY KEY (`message_id`),
   KEY `sender_id` (`sender_id`),
   KEY `receiver_id` (`receiver_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS `profile` (
   `isprivate` tinyint(1) DEFAULT 0,
   PRIMARY KEY (`profile_id`),
   KEY `acc_id` (`acc_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `profile`
