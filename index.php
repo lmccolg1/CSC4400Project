@@ -1,288 +1,340 @@
 <?php
 session_start();
 
-$error = "";
-
-// Database connection
-$conn = new mysqli("localhost", "root", "", "dating_app");
-
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+$login_error = "";
 
 // Handle guest login
 if (isset($_POST['guest_login'])) {
-    $_SESSION['account_id'] = 0;
+    unset($_SESSION['account_id']);
     $_SESSION['username'] = 'guest#1234';
-    $_SESSION['utype'] = 'guest';
-    $_SESSION['isbot'] = 0;
+    $_SESSION['user_type'] = 'guest';
     $_SESSION['logged_in'] = true;
-
     header('Location: dashboard.php');
     exit();
 }
-
+//
 // Handle regular login
 if (isset($_POST['login'])) {
     $username = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
     if (empty($username) || empty($password)) {
-        $error = "Both username and password are required.";
+        $login_error = "Please enter both username and password.";
     } else {
-        $stmt = $conn->prepare("
-            SELECT account_id, username, password, utype, isbot
-            FROM account
-            WHERE username = ?
-        ");
+        $conn = new mysqli("localhost", "root", "", "dating_app");
 
-        if (!$stmt) {
-            die("Prepare failed: " . $conn->error);
-        }
+        if ($conn->connect_error) {
+            $login_error = "Database connection failed. Please try again later.";
+        } else {
+            $stmt = $conn->prepare("SELECT account_id, username, password, utype FROM account WHERE username = ?");
+            $stmt->bind_param("s", $username);
+            $stmt->execute();
+            $stmt->store_result();
 
-        $stmt->bind_param("s", $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
+            if ($stmt->num_rows > 0) {
+                $stmt->bind_result($db_account_id, $db_username, $db_password, $db_utype);
+                $stmt->fetch();
 
-        if ($result->num_rows === 1) {
-            $row = $result->fetch_assoc();
+                if ($password === $db_password) {
+                    $_SESSION['account_id'] = (int)$db_account_id;
+                    $_SESSION['username'] = $db_username;
+                    $_SESSION['user_type'] = $db_utype;
+                    $_SESSION['logged_in'] = true;
 
-            // Use password_verify because signup now stores hashed passwords
-            if (password_verify($password, $row['password'])) {
-                $_SESSION['account_id'] = $row['account_id'];
-                $_SESSION['username'] = $row['username'];
-                $_SESSION['utype'] = $row['utype'];
-                $_SESSION['isbot'] = $row['isbot'];
-                $_SESSION['logged_in'] = true;
+                    $stmt->close();
+                    $conn->close();
 
-                // Redirect by role
-                if ($row['utype'] === 'admin') {
-                    header('Location: admin_dashboard.php');
+                    if ($db_utype === 'admin') {
+                        header('Location: admin_dashboard.php');
+                    } else {
+                        header('Location: dashboard.php');
+                    }
                     exit();
                 } else {
-                    header('Location: dashboard.php');
-                    exit();
+                    $login_error = "Invalid username or password.";
                 }
             } else {
-                $error = "Invalid username or password.";
+                $login_error = "Invalid username or password.";
             }
-        } else {
-            $error = "Invalid username or password.";
-        }
 
-        $stmt->close();
+            $stmt->close();
+            $conn->close();
+        }
     }
 }
-
-$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parasocial</title>
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Parasocial | Make Believe You're Making Friends</title>
+        <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
 
-        .hero-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            position: relative;
-            overflow: hidden;
-        }
+            .hero-section {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                position: relative;
+                overflow: hidden;
+            }
 
-        .hero-pattern {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0.1;
-            background-image:
-                radial-gradient(circle at 20% 50%, white 1px, transparent 1px),
-                radial-gradient(circle at 80% 80%, white 1px, transparent 1px);
-            background-size: 50px 50px;
-        }
+            .hero-pattern {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                opacity: 0.1;
+                background-image:
+                    radial-gradient(circle at 20% 50%, white 1px, transparent 1px),
+                    radial-gradient(circle at 80% 80%, white 1px, transparent 1px);
+                background-size: 50px 50px;
+            }
 
-        .hero-content {
-            position: relative;
-            z-index: 1;
-            padding-top: 80px;
-        }
+            .hero-content {
+                position: relative;
+                z-index: 1;
+                padding-top: 80px;
+            }
 
-        .tagline {
-            font-size: 1.5em;
-            color: white;
-            margin-top: 10px;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
-        }
+            .logo {
+                font-size: 3em;
+                font-weight: bold;
+                color: white;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            }
 
-        .login-card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 40px;
-            max-width: 450px;
-            margin: 40px auto;
-        }
+            .logo i {
+                color: #ff6b9d;
+                animation: heartbeat 1.5s ease-in-out infinite;
+            }
 
-        .login-title {
-            color: #667eea;
-            font-size: 2em;
-            margin-bottom: 30px;
-            font-weight: bold;
-        }
 
-        .w3-input {
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 12px;
-            font-size: 1em;
-            transition: all 0.3s;
-        }
+            .tagline {
+                font-size: 1.5em;
+                color: white;
+                margin-top: 10px;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            }
 
-        .w3-input:focus {
-            border-color: #667eea;
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
+            .login-card {
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                padding: 40px;
+                max-width: 450px;
+                margin: 40px auto;
+            }
 
-        .brand {
-            position: fixed;
-            top: 20px;
-            left: 50px;
-            color: white;
-            font-size: 3em;
-            font-weight: bold;
-            letter-spacing: 1px;
-            z-index: 1000;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.3);
-        }
+            .login-title {
+                color: #667eea;
+                font-size: 2em;
+                margin-bottom: 30px;
+                font-weight: bold;
+            }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 8px;
-            padding: 14px;
-            color: white;
-            font-size: 1.1em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-        }
+            .w3-input {
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 1em;
+                transition: all 0.3s;
+            }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
+            .w3-input:focus {
+                border-color: #667eea;
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }
 
-        .btn-guest {
-            background: white;
-            border: 2px solid #667eea;
-            border-radius: 8px;
-            padding: 14px;
-            color: #667eea;
-            font-size: 1.1em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-        }
+            .btn-primary {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border: none;
+                border-radius: 8px;
+                padding: 14px;
+                color: white;
+                font-size: 1.1em;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.3s;
+                width: 100%;
+            }
 
-        .btn-guest:hover {
-            background: #f8f9ff;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
-        }
+            .btn-primary:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            }
 
-        .divider {
-            display: flex;
-            align-items: center;
-            text-align: center;
-            margin: 25px 0;
-            color: #999;
-        }
+            .btn-guest {
+                background: white;
+                border: 2px solid #667eea;
+                border-radius: 8px;
+                padding: 14px;
+                color: #667eea;
+                font-size: 1.1em;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.3s;
+                width: 100%;
+            }
 
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #e0e0e0;
-        }
+            .btn-guest:hover {
+                background: #f8f9ff;
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+            }
 
-        .divider span {
-            padding: 0 15px;
-            font-size: 0.9em;
-        }
+            .divider {
+                display: flex;
+                align-items: center;
+                text-align: center;
+                margin: 25px 0;
+                color: #999;
+            }
 
-        .error-message {
-            color: #b00020;
-            margin-top: 15px;
-            text-align: center;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <div class="brand">Parasocial</div>
-    <div class="hero-section">
-        <div class="hero-pattern"></div>
-        <div class="hero-content">
-            <div class="w3-container w3-center">
-                <p class="tagline"></p>
-            </div>
+            .divider::before,
+            .divider::after {
+                content: '';
+                flex: 1;
+                border-bottom: 1px solid #e0e0e0;
+            }
 
-            <div class="login-card">
-                <h2 class="login-title w3-center">Welcome Back</h2>
+            .divider span {
+                padding: 0 15px;
+                font-size: 0.9em;
+            }
 
-                <form method="POST" action="">
-                    <div class="w3-margin-bottom">
-                        <label class="w3-text-grey"><b>Username</b></label>
-                        <input class="w3-input" type="text" name="username" placeholder="Enter your username" required>
+            .features {
+                padding: 80px 20px;
+                background: #f8f9fa;
+            }
+
+            .feature-card {
+                background: white;
+                border-radius: 15px;
+                padding: 30px;
+                text-align: center;
+                transition: all 0.3s;
+                height: 100%;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            }
+
+            .feature-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+            }
+
+            .feature-icon {
+                font-size: 3em;
+                color: #667eea;
+                margin-bottom: 20px;
+            }
+
+            .feature-title {
+                font-size: 1.5em;
+                color: #333;
+                margin-bottom: 15px;
+                font-weight: bold;
+            }
+
+            .feature-text {
+                color: #666;
+                line-height: 1.6;
+            }
+
+            .stats-section {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 60px 20px;
+                color: white;
+            }
+
+            .stat-box {
+                text-align: center;
+                padding: 20px;
+            }
+
+            .stat-number {
+                font-size: 3em;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            .stat-label {
+                font-size: 1.2em;
+                opacity: 0.9;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Hero Section -->
+        <div class="hero-section">
+            <div class="hero-pattern"></div>
+            <div class="hero-content">
+                <div class="w3-container w3-center">
+                    <div class="logo">
+                        <i class="fas fa-heart"></i> Parasocial
+
                     </div>
-
-                    <div class="w3-margin-bottom">
-                        <label class="w3-text-grey"><b>Password</b></label>
-                        <input class="w3-input" type="password" name="password" placeholder="Enter your password" required>
-                    </div>
-
-                    <button type="submit" name="login" class="btn-primary">
-                        <i class="fas fa-sign-in-alt"></i> Sign In
-                    </button>
-                </form>
-
-                <?php if (!empty($error)): ?>
-                    <p class="error-message"><?php echo htmlspecialchars($error); ?></p>
-                <?php endif; ?>
-
-                <div class="divider">
-                    <span>OR</span>
+                    <p class="tagline">Where meaningless connections spawn</p>
                 </div>
 
-                <form method="POST" action="">
-                    <button type="submit" name="guest_login" class="btn-guest">
-                        <i class="fas fa-user-circle"></i> Continue as Guest #1234
-                    </button>
-                </form>
+                <!-- Login Card -->
+                <div class="login-card">
+                    <h2 class="login-title w3-center">Welcome to Parasocial!</h2>
 
-                <div class="w3-center w3-margin-top">
-                    <p class="w3-text-grey">
-                        Don't have an account?
-                        <a href="signup.php" style="color: #667eea; text-decoration: none; font-weight: bold;">Sign Up</a>
-                    </p>
+                    <form method="POST" action="">
+                        <div class="w3-margin-bottom">
+                            <label class="w3-text-grey"><b>Username</b></label>
+                            <input class="w3-input" type="text" name="username" placeholder="Enter your username" required>
+                        </div>
+
+                        <div class="w3-margin-bottom">
+                            <label class="w3-text-grey"><b>Password</b></label>
+                            <input class="w3-input" type="password" name="password" placeholder="Enter your password" required>
+                        </div>
+
+                        <button type="submit" name="login" class="btn-primary">
+                            <i class="fas fa-sign-in-alt"></i> Sign In
+                        </button>
+
+                        <?php if (!empty($login_error)): ?>
+                            <div style="color:#b00020; text-align:center; margin-top:12px; font-weight:bold;">
+                                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($login_error); ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <div class="w3-center w3-margin-top">
+                            <a href="forgot_password.php" style="color: #667eea; text-decoration: none; font-size: 0.9em;">
+                                <i class="fas fa-key"></i> Forgot Password?
+                            </a>
+                        </div>
+                    </form>
+
+                    <div class="divider">
+                        <span>OR</span>
+                    </div>
+
+                    <!-- Guest Login Button -->
+                    <form method="POST" action="">
+                        <button type="submit" name="guest_login" class="btn-guest">
+                            <i class="fas fa-user-circle"></i> Continue as Guest
+                        </button>
+                    </form>
+
+                    <div class="w3-center w3-margin-top">
+                        <p class="w3-text-grey">Don't have an account? <a href="signup.php" style="color: #667eea; text-decoration: none; font-weight: bold;">Sign Up</a></p>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <footer class="w3-container w3-padding-32 w3-center w3-light-grey">
-        <p>&copy; 2026. All rights reserved.</p>
-    </footer>
-</body>
+        <!-- Footer -->
+        <footer class="w3-container w3-padding-32 w3-center w3-light-grey">
+            <p>&copy; 2026 Parasocial. All rights reserved.</p>
+        </footer>
+    </body>
 </html>
