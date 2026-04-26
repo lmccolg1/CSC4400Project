@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 30, 2026 at 03:48 PM
+-- Generation Time: Mar 29, 2026 at 07:54 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -34,7 +34,9 @@ CREATE TABLE `account` (
   `utype` varchar(20) DEFAULT NULL,
   `isbot` tinyint(1) DEFAULT 0,
   `created_at` datetime DEFAULT current_timestamp(),
-  `standing` varchar(20) DEFAULT NULL
+  `standing` varchar(20) DEFAULT NULL,
+  `security_question` varchar(255) DEFAULT NULL,
+  `security_answer` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -43,7 +45,7 @@ CREATE TABLE `account` (
 
 INSERT INTO `account` (`account_id`, `username`, `password`, `utype`, `isbot`, `created_at`, `standing`) VALUES
 (1, 'flynn_mctaggart', 'ripntear', 'user', 0, '2026-03-17 14:11:50', NULL),
-(2, 'spartan117', 'pillarofautumn', 'user', 0, '2026-03-29 13:07:00', NULL),
+(2, 'spartan117', 'pillarofautism', 'user', 0, '2026-03-29 13:07:00', NULL),
 (3, 'GOD', 'ashbagoba12', 'admin', 0, '2026-03-29 13:39:03', NULL);
 
 -- --------------------------------------------------------
@@ -182,6 +184,27 @@ ALTER TABLE `profile`
   ADD CONSTRAINT `profile_ibfk_1` FOREIGN KEY (`acc_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE;
 COMMIT;
 
+-- Run this if upgrading an existing database (columns may already exist if using fresh schema above):
+-- ALTER TABLE `account`
+--   ADD COLUMN IF NOT EXISTS `security_question` varchar(255) DEFAULT NULL,
+--   ADD COLUMN IF NOT EXISTS `security_answer` varchar(255) DEFAULT NULL;
+
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+-- --------------------------------------------------------
+-- Table structure for table `matches`
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `matches` (
+  `match_id` int(11) NOT NULL AUTO_INCREMENT,
+  `user1_id` int(11) NOT NULL,
+  `user2_id` int(11) NOT NULL,
+  `status` enum('liked','passed','matched') NOT NULL DEFAULT 'liked',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`match_id`),
+  UNIQUE KEY `unique_pair` (`user1_id`,`user2_id`),
+  KEY `user2_id` (`user2_id`),
+  CONSTRAINT `matches_ibfk_1` FOREIGN KEY (`user1_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE,
+  CONSTRAINT `matches_ibfk_2` FOREIGN KEY (`user2_id`) REFERENCES `account` (`account_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
