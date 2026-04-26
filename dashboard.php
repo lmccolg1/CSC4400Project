@@ -141,7 +141,6 @@ $readStmt->close();
             <div class="logo"><i class="fas fa-heart"></i> Parasocial</div>
             <div class="user-info">
                 <a class="nav-link" href="find_matches.php"><i class="fas fa-heart"></i> Find Matches</a>
-                <a class="nav-link" href="messages.php"><i class="fas fa-comments"></i> Messages</a>
                 <a class="nav-link" href="edit_profile.php"><i class="fas fa-user-edit"></i> Profile</a>
                 <a class="nav-link" href="settings.php"><i class="fas fa-cog"></i> Settings</a>
                 <span><i class="fas fa-user-circle"></i> <?php echo h($username); ?></span>
@@ -153,29 +152,10 @@ $readStmt->close();
     <div class="container">
         <div class="card">
             <h1 class="welcome-title">Welcome back, <?php echo h($username); ?></h1>
-            <p class="welcome-subtitle">Use the tools below to manage your profile, find matches, and send private messages.</p>
         </div>
 
         <?php if ($notice): ?><div class="alert ok"><?php echo h($notice); ?></div><?php endif; ?>
         <?php if ($error): ?><div class="alert err"><?php echo h($error); ?></div><?php endif; ?>
-
-        <div class="card-grid">
-            <div class="feature-card">
-                <div class="feature-icon"><i class="fas fa-heart"></i></div>
-                <h3 class="feature-title"><a href="find_matches.php">Find Matches</a></h3>
-                <p class="feature-text">Find someone else to bother.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon"><i class="fas fa-user-edit"></i></div>
-                <h3 class="feature-title"><a href="edit_profile.php">Edit Profile</a></h3>
-                <p class="feature-text">Update your screenname, summary, likes, dislikes, and privacy settings.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon"><i class="fas fa-cog"></i></div>
-                <h3 class="feature-title"><a href="settings.php">Settings</a></h3>
-                <p class="feature-text">Manage account settings.</p>
-            </div>
-        </div>
 
         <div class="card">
             <h2 class="section-title"><i class="fas fa-envelope"></i> Private Messages</h2>
