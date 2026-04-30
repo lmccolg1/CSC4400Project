@@ -106,7 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_profile'])) {
         <div class="nav-links">
             <a href="dashboard.php" class="nav-link"><i class="fas fa-home"></i> Home</a>
             <a href="find_matches.php" class="nav-link"><i class="fas fa-heart"></i> Find Matches</a>
-            <a href="messages.php" class="nav-link"><i class="fas fa-comments"></i> Messages</a>
             <a href="edit_profile.php" class="nav-link active"><i class="fas fa-user-edit"></i> Edit Profile</a>
             <a href="settings.php" class="nav-link"><i class="fas fa-cog"></i> Settings</a>
             <a href="logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
