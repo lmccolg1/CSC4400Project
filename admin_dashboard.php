@@ -1,5 +1,11 @@
 <?php
 session_start();
+require_once __DIR__ . '/DBConnect.php';
+
+if (!isset($conn) || $conn->connect_error) {
+    die('Database connection failed.');
+}
+
 
 // Check if user is logged in and is admin
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -15,13 +21,135 @@ if ($user_type !== 'admin') {
     header('Location: dashboard.php');
     exit();
 }
+
+$account_id = (int)($_SESSION['account_id'] ?? 0);
+$notice = '';
+$error = '';
+
+if ($account_id <= 0 && !empty($username)) {
+    $idStmt = $conn->prepare("SELECT account_id FROM account WHERE username = ? LIMIT 1");
+    if ($idStmt) {
+        $idStmt->bind_param("s", $username);
+        $idStmt->execute();
+        $idResult = $idStmt->get_result();
+        if ($idRow = $idResult->fetch_assoc()) {
+            $account_id = (int)$idRow['account_id'];
+            $_SESSION['account_id'] = $account_id;
+        }
+        $idStmt->close();
+    }
+}
+
+if ($account_id <= 0) {
+    session_destroy();
+    header('Location: index.php');
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'])) {
+    $receiver_id = (int)($_POST['receiver_id'] ?? 0);
+    $message_text = trim($_POST['message_text'] ?? '');
+
+    if ($receiver_id <= 0) {
+        $error = 'Please select a valid recipient.';
+    } elseif ($receiver_id === $account_id) {
+        $error = 'You cannot send a message to yourself.';
+    } elseif ($message_text === '') {
+        $error = 'Message text cannot be empty.';
+    } else {
+        $receiverCheck = $conn->prepare("SELECT account_id FROM account WHERE account_id = ? LIMIT 1");
+        if ($receiverCheck) {
+            $receiverCheck->bind_param("i", $receiver_id);
+            $receiverCheck->execute();
+            $receiverResult = $receiverCheck->get_result();
+
+            if ($receiverResult->num_rows === 0) {
+                $error = 'Recipient account does not exist.';
+            } else {
+                $sendStmt = $conn->prepare("
+                    INSERT INTO message (sender_id, receiver_id, text)
+                    VALUES (?, ?, ?)
+                ");
+
+                if ($sendStmt) {
+                    $sendStmt->bind_param("iis", $account_id, $receiver_id, $message_text);
+                    if ($sendStmt->execute()) {
+                        $notice = 'Message sent successfully.';
+                        $_POST['message_text'] = '';
+                        $_POST['receiver_id'] = '';
+                    } else {
+                        $error = 'Message could not be sent: ' . $sendStmt->error;
+                    }
+                    $sendStmt->close();
+                } else {
+                    $error = 'Message query could not be prepared: ' . $conn->error;
+                }
+            }
+            $receiverCheck->close();
+        } else {
+            $error = 'Recipient check could not be prepared: ' . $conn->error;
+        }
+    }
+}
+
+$accounts = [];
+$accountsStmt = $conn->prepare("
+    SELECT
+        a.account_id,
+        a.username,
+        a.utype,
+        COALESCE(p.screenname, a.username) AS display_name
+    FROM account a
+    LEFT JOIN profile p ON p.acc_id = a.account_id
+    WHERE a.account_id <> ?
+    ORDER BY display_name ASC
+");
+
+if ($accountsStmt) {
+    $accountsStmt->bind_param("i", $account_id);
+    $accountsStmt->execute();
+    $accountsResult = $accountsStmt->get_result();
+    if ($accountsResult) {
+        $accounts = $accountsResult->fetch_all(MYSQLI_ASSOC);
+    }
+    $accountsStmt->close();
+}
+
+$messages = [];
+$messageStmt = $conn->prepare("
+    SELECT
+        m.message_id,
+        m.text,
+        m.sent_at,
+        m.read_at,
+        sender.account_id AS sender_id,
+        receiver.account_id AS receiver_id,
+        COALESCE(sender_profile.screenname, sender.username) AS sender_name,
+        COALESCE(receiver_profile.screenname, receiver.username) AS receiver_name
+    FROM message m
+    INNER JOIN account sender ON sender.account_id = m.sender_id
+    INNER JOIN account receiver ON receiver.account_id = m.receiver_id
+    LEFT JOIN profile sender_profile ON sender_profile.acc_id = sender.account_id
+    LEFT JOIN profile receiver_profile ON receiver_profile.acc_id = receiver.account_id
+    ORDER BY m.sent_at DESC
+    LIMIT 10
+");
+
+if ($messageStmt) {
+    $messageStmt->execute();
+    $messageResult = $messageStmt->get_result();
+    if ($messageResult) {
+        $messages = $messageResult->fetch_all(MYSQLI_ASSOC);
+    }
+    $messageStmt->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - HeartConnect</title>
+    <title>Admin Dashboard | Parasocial</title>
     <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -257,6 +385,62 @@ if ($user_type !== 'admin') {
             background: #f8d7da;
             color: #721c24;
         }
+
+        .form-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1em;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .notice {
+            background: #d4edda;
+            color: #155724;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .badge {
+            color: #999;
+            font-size: 0.85em;
+            margin-left: 4px;
+        }
     </style>
 </head>
 <body>
@@ -264,7 +448,7 @@ if ($user_type !== 'admin') {
     <div class="navbar">
         <div class="navbar-content">
             <div class="logo">
-                <i class="fas fa-shield-alt"></i> HeartConnect
+                <i class="fas fa-heart"></i> Parasocial
                 <span class="admin-badge">ADMIN</span>
             </div>
             <div class="user-info">
@@ -281,146 +465,81 @@ if ($user_type !== 'admin') {
         <!-- Welcome Section -->
         <div class="welcome-card">
             <h1 class="welcome-title">Admin Control Panel</h1>
-            <p class="welcome-subtitle">Manage users, monitor activity, and oversee platform operations</p>
+        </div>
+
+        <div class="form-card">
+            <h2 class="table-title"><i class="fas fa-paper-plane"></i> Send Message</h2>
+
+            <?php if ($notice !== ''): ?>
+                <div class="notice"><?php echo htmlspecialchars($notice); ?></div>
+            <?php endif; ?>
+
+            <?php if ($error !== ''): ?>
+                <div class="error"><?php echo htmlspecialchars($error); ?></div>
+            <?php endif; ?>
+
+            <form method="POST" action="admin_dashboard.php">
+                <div class="form-group">
+                    <label for="receiver_id">Recipient</label>
+                    <select id="receiver_id" name="receiver_id" required>
+                        <option value="">Select an account</option>
+                        <?php foreach ($accounts as $account): ?>
+                            <option value="<?php echo (int)$account['account_id']; ?>"
+                                <?php echo ((int)($_POST['receiver_id'] ?? 0) === (int)$account['account_id']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($account['display_name']); ?>
+                                (<?php echo htmlspecialchars($account['username']); ?>, <?php echo htmlspecialchars($account['utype'] ?? 'user'); ?>, #<?php echo (int)$account['account_id']; ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="message_text">Message</label>
+                    <textarea id="message_text" name="message_text" required><?php echo htmlspecialchars($_POST['message_text'] ?? ''); ?></textarea>
+                </div>
+
+                <button type="submit" name="send_message" class="action-btn">Send Message</button>
+            </form>
         </div>
         
-        <!-- Stats Section -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-users"></i></div>
-                <div class="stat-number">2,547</div>
-                <div class="stat-label">Total Users</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-user-plus"></i></div>
-                <div class="stat-number">142</div>
-                <div class="stat-label">New Users (Today)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-heart"></i></div>
-                <div class="stat-number">8,923</div>
-                <div class="stat-label">Total Matches</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-comments"></i></div>
-                <div class="stat-number">45,678</div>
-                <div class="stat-label">Messages Sent</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                <div class="stat-number">23</div>
-                <div class="stat-label">Pending Reports</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-robot"></i></div>
-                <div class="stat-number">156</div>
-                <div class="stat-label">Active Bots</div>
-            </div>
-        </div>
-        
-        <!-- Admin Action Cards -->
-        <div class="card-grid">
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-users-cog"></i></div>
-                <h3 class="card-title">User Management</h3>
-                <p class="card-text">View, edit, suspend, or delete user accounts. Manage user permissions and roles.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> Manage Users</button>
-            </div>
-            
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-flag"></i></div>
-                <h3 class="card-title">Review Reports</h3>
-                <p class="card-text">Review and take action on user-reported content, profiles, and behavior.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> View Reports</button>
-            </div>
-            
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-robot"></i></div>
-                <h3 class="card-title">Bot Management</h3>
-                <p class="card-text">Configure, deploy, and monitor AI bots to enhance user engagement.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> Manage Bots</button>
-            </div>
-            
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-chart-line"></i></div>
-                <h3 class="card-title">Analytics</h3>
-                <p class="card-text">View detailed analytics, user engagement metrics, and platform statistics.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> View Analytics</button>
-            </div>
-            
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-database"></i></div>
-                <h3 class="card-title">Database Tools</h3>
-                <p class="card-text">Perform database maintenance, backups, and data integrity checks.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> Database Tools</button>
-            </div>
-            
-            <div class="admin-card">
-                <div class="card-icon"><i class="fas fa-cogs"></i></div>
-                <h3 class="card-title">System Settings</h3>
-                <p class="card-text">Configure platform settings, features, and global preferences.</p>
-                <button class="action-btn"><i class="fas fa-arrow-right"></i> Settings</button>
-            </div>
-        </div>
-        
-        <!-- Recent User Activity Table -->
         <div class="table-card">
-            <h2 class="table-title"><i class="fas fa-clock"></i> Recent User Activity</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Username</th>
-                        <th>Account Type</th>
-                        <th>Status</th>
-                        <th>Last Active</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>1001</td>
-                        <td>sarah_jones</td>
-                        <td>Regular User</td>
-                        <td><span class="status-badge status-active">Active</span></td>
-                        <td>2 minutes ago</td>
-                        <td><i class="fas fa-edit" style="cursor: pointer; color: #667eea; margin-right: 10px;"></i> <i class="fas fa-ban" style="cursor: pointer; color: #e74c3c;"></i></td>
-                    </tr>
-                    <tr>
-                        <td>1002</td>
-                        <td>mike_thompson</td>
-                        <td>Regular User</td>
-                        <td><span class="status-badge status-active">Active</span></td>
-                        <td>15 minutes ago</td>
-                        <td><i class="fas fa-edit" style="cursor: pointer; color: #667eea; margin-right: 10px;"></i> <i class="fas fa-ban" style="cursor: pointer; color: #e74c3c;"></i></td>
-                    </tr>
-                    <tr>
-                        <td>1003</td>
-                        <td>emma_wilson</td>
-                        <td>Regular User</td>
-                        <td><span class="status-badge status-pending">Pending Review</span></td>
-                        <td>1 hour ago</td>
-                        <td><i class="fas fa-edit" style="cursor: pointer; color: #667eea; margin-right: 10px;"></i> <i class="fas fa-ban" style="cursor: pointer; color: #e74c3c;"></i></td>
-                    </tr>
-                    <tr>
-                        <td>1004</td>
-                        <td>john_spam</td>
-                        <td>Regular User</td>
-                        <td><span class="status-badge status-banned">Banned</span></td>
-                        <td>2 days ago</td>
-                        <td><i class="fas fa-edit" style="cursor: pointer; color: #667eea; margin-right: 10px;"></i> <i class="fas fa-undo" style="cursor: pointer; color: #27ae60;"></i></td>
-                    </tr>
-                    <tr>
-                        <td>1005</td>
-                        <td>bot_friendly01</td>
-                        <td>Bot Account</td>
-                        <td><span class="status-badge status-active">Active</span></td>
-                        <td>5 minutes ago</td>
-                        <td><i class="fas fa-edit" style="cursor: pointer; color: #667eea; margin-right: 10px;"></i> <i class="fas fa-ban" style="cursor: pointer; color: #e74c3c;"></i></td>
-                    </tr>
-                </tbody>
-            </table>
+            <h2 class="table-title"><i class="fas fa-envelope"></i> Recent Messages</h2>
+            <?php if (empty($messages)): ?>
+                <p>No messages found.</p>
+            <?php else: ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Message</th>
+                            <th>Sent</th>
+                            <th>Read?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($messages as $message): ?>
+                            <tr>
+                                <td><?php echo (int)$message['message_id']; ?></td>
+                                <td>
+                                    <?php echo htmlspecialchars($message['sender_name'] ?? ''); ?>
+                                    <span class="badge">#<?php echo (int)$message['sender_id']; ?></span>
+                                </td>
+                                <td>
+                                    <?php echo htmlspecialchars($message['receiver_name'] ?? ''); ?>
+                                    <span class="badge">#<?php echo (int)$message['receiver_id']; ?></span>
+                                </td>
+                                <td><?php echo htmlspecialchars($message['text'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($message['sent_at'] ?? ''); ?></td>
+                                <td><?php echo empty($message['read_at']) ? 'No' : 'Yes'; ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
+
     </div>
 </body>
 </html>

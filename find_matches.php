@@ -1,8 +1,7 @@
 <?php
 session_start();
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: index.php'); exit();
-}
+require_once 'auth.php';
+require_login();
 require_once 'DBConnect.php';
 
 $username   = $_SESSION['username'] ?? 'User';

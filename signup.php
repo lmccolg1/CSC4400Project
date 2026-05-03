@@ -113,8 +113,8 @@ if (isset($_POST['register'])) {
                         $stmtProfile->close();
 
                         $conn->commit();
+                        $success = 'Account created! <a href="index.php" style="color:#667eea">Log in now →</a>';
 
-                        
                     } catch (Exception $e) {
                         $conn->rollback();
                         $error = $e->getMessage();
