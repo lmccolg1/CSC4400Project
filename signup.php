@@ -26,8 +26,8 @@ if (isset($_POST['register'])) {
     $isprivate = isset($_POST['isprivate']) ? 1 : 0;
 
     // New: admin checkbox
-    $isAdmin = isset($_POST['is_admin']) ? 1 : 0;
-    $utype = $isAdmin ? 'admin' : 'user';
+	$isAdmin = isset($_POST['is_admin']) ? 1 : 0;
+	$utype = 'user'; // admin status is not granted immediately
 
     // Validation
     if (
