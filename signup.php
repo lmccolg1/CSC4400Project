@@ -113,7 +113,22 @@ if (isset($_POST['register'])) {
                         $stmtProfile->close();
 
                         $conn->commit();
-                        $success = 'Account created! <a href="index.php" style="color:#667eea">Log in now →</a>';
+						if ($isAdmin) {
+						$stmtRequest = $conn->prepare("
+							INSERT INTO admin_requests (account_id, status)
+							VALUES (?, 'pending')
+						");
+						$stmtRequest->bind_param("i", $account_id);
+
+						if (!$stmtRequest->execute()) {
+							throw new Exception("Failed to create admin request.");
+						}
+
+						$stmtRequest->close();
+					}
+                        $success = $isAdmin
+						? 'Account created. Your admin request is pending approval.'
+						: 'Account created! Log in now.';
 
                     } catch (Exception $e) {
                         $conn->rollback();

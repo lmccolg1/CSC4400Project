@@ -26,6 +26,64 @@ $account_id = (int)($_SESSION['account_id'] ?? 0);
 $notice = '';
 $error = '';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_request_action'])) {
+    $request_id = (int)($_POST['request_id'] ?? 0);
+    $action = $_POST['admin_request_action'];
+
+    if ($request_id <= 0 || !in_array($action, ['approved', 'denied'], true)) {
+        $error = 'Invalid admin request action.';
+    } else {
+        $conn->begin_transaction();
+
+        try {
+            $stmt = $conn->prepare("
+                SELECT account_id
+                FROM admin_requests
+                WHERE request_id = ? AND status = 'pending'
+                FOR UPDATE
+            ");
+            $stmt->bind_param("i", $request_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $request = $result->fetch_assoc();
+            $stmt->close();
+
+            if (!$request) {
+                throw new Exception('Admin request not found or already handled.');
+            }
+
+            $requested_account_id = (int)$request['account_id'];
+
+            $updateRequest = $conn->prepare("
+                UPDATE admin_requests
+                SET status = ?
+                WHERE request_id = ?
+            ");
+            $updateRequest->bind_param("si", $action, $request_id);
+            $updateRequest->execute();
+            $updateRequest->close();
+
+            if ($action === 'approved') {
+                $updateAccount = $conn->prepare("
+                    UPDATE account
+                    SET utype = 'admin'
+                    WHERE account_id = ?
+                ");
+                $updateAccount->bind_param("i", $requested_account_id);
+                $updateAccount->execute();
+                $updateAccount->close();
+            }
+
+            $conn->commit();
+            $notice = $action === 'approved'
+                ? 'Admin request approved.'
+                : 'Admin request denied.';
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = $e->getMessage();
+        }
+    }
+}
 if ($account_id <= 0 && !empty($username)) {
     $idStmt = $conn->prepare("SELECT account_id FROM account WHERE username = ? LIMIT 1");
     if ($idStmt) {
@@ -142,6 +200,28 @@ if ($messageStmt) {
         $messages = $messageResult->fetch_all(MYSQLI_ASSOC);
     }
     $messageStmt->close();
+}
+$pendingAdminRequests = [];
+
+$stmt = $conn->prepare("
+    SELECT
+        ar.request_id,
+        ar.created_at,
+        a.account_id,
+        a.username,
+        COALESCE(p.screenname, a.username) AS screenname
+    FROM admin_requests ar
+    INNER JOIN account a ON a.account_id = ar.account_id
+    LEFT JOIN profile p ON p.acc_id = a.account_id
+    WHERE ar.status = 'pending'
+    ORDER BY ar.created_at ASC
+");
+
+if ($stmt) {
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $pendingAdminRequests = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 }
 ?>
 <!DOCTYPE html>
@@ -466,7 +546,48 @@ if ($messageStmt) {
         <div class="welcome-card">
             <h1 class="welcome-title">Admin Control Panel</h1>
         </div>
+		<div class="table-card">
+    <h2 class="table-title"><i class="fas fa-user-shield"></i> Pending Admin Requests</h2>
 
+    <?php if (empty($pendingAdminRequests)): ?>
+        <p>No pending admin requests.</p>
+    <?php else: ?>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Screenname</th>
+                    <th>Requested</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($pendingAdminRequests as $request): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($request['username']); ?></td>
+                        <td><?php echo htmlspecialchars($request['screenname']); ?></td>
+                        <td><?php echo htmlspecialchars($request['created_at']); ?></td>
+                        <td>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="request_id" value="<?php echo (int)$request['request_id']; ?>">
+                                <button type="submit" name="admin_request_action" value="approved" class="action-btn">
+                                    Approve
+                                </button>
+                            </form>
+
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="request_id" value="<?php echo (int)$request['request_id']; ?>">
+                                <button type="submit" name="admin_request_action" value="denied" class="action-btn">
+                                    Deny
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
         <div class="form-card">
             <h2 class="table-title"><i class="fas fa-paper-plane"></i> Send Message</h2>
 
