@@ -179,7 +179,6 @@ if ($user_type !== 'guest') {
         <div class="user-info">
             <?php if ($user_type !== 'guest'): ?>
             <a class="nav-link" href="find_matches.php"><i class="fas fa-heart"></i> Find Matches</a>
-            <a class="nav-link" href="messages.php"><i class="fas fa-comments"></i> Messages</a>
             <a class="nav-link" href="edit_profile.php"><i class="fas fa-user-edit"></i> Profile</a>
             <a class="nav-link" href="settings.php"><i class="fas fa-cog"></i> Settings</a>
             <?php endif; ?>
