@@ -1,8 +1,7 @@
 <?php
 session_start();
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: index.php'); exit();
-}
+require_once 'auth.php';
+require_login();
 require_once 'DBConnect.php';
 
 $username   = $_SESSION['username'] ?? 'User';
@@ -30,15 +29,21 @@ if (isset($_POST['change_password'])) {
     $row = $chk->get_result()->fetch_assoc();
     $chk->close();
 
-    if ($row['password'] !== $current) {
+    $storedHash = $row['password'];
+    $passwordOk = str_starts_with($storedHash, '$2y$')
+        ? password_verify($current, $storedHash)
+        : ($current === $storedHash);
+
+    if (!$passwordOk) {
         $error = "Current password is incorrect.";
     } elseif (strlen($new_pw) < 8) {
         $error = "New password must be at least 8 characters.";
     } elseif ($new_pw !== $confirm) {
         $error = "New passwords do not match.";
     } else {
+        $hashed_pw = password_hash($new_pw, PASSWORD_DEFAULT);
         $upd = $conn->prepare("UPDATE account SET password = ? WHERE account_id = ?");
-        $upd->bind_param("si", $new_pw, $account_id);
+        $upd->bind_param("si", $hashed_pw, $account_id);
         $upd->execute();
         $upd->close();
         $success = "Password updated successfully.";

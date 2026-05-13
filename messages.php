@@ -1,8 +1,7 @@
 <?php
 session_start();
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: index.php'); exit();
-}
+require_once 'auth.php';
+require_login(); // guests cannot use messaging
 require_once 'DBConnect.php';
 
 $username   = $_SESSION['username'] ?? 'User';
@@ -41,10 +40,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_message'])) {
 
 // ── Mark incoming messages as read ────────────────────────────────────────
 if ($active_chat) {
-    $conn->query("UPDATE message SET read_at = NOW()
-                  WHERE receiver_id = $account_id
-                    AND sender_id   = $active_chat
-                    AND read_at IS NULL");
+    $markRead = $conn->prepare(
+        'UPDATE message SET read_at = NOW() WHERE receiver_id = ? AND sender_id = ? AND read_at IS NULL'
+    );
+    $markRead->bind_param('ii', $account_id, $active_chat);
+    $markRead->execute();
+    $markRead->close();
 }
 
 // ── Conversation list (people we've messaged) ─────────────────────────────
